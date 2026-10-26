@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#050510">
+    <title>星空即時翻譯機 Starry Translator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+
+        #starfield {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        .glass-panel {
+            background: rgba(25, 25, 40, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .subtitle-text {
+            text-shadow: 
+                2px 2px 0 #000, 
+                -1px -1px 0 #000, 
+                1px -1px 0 #000, 
+                -1px 1px 0 #000, 
+                1px 1px 0 #000,
+                0px 4px 8px rgba(0,0,0,0.8);
+            font-weight: 700;
+        }
+
+        .mode-btn {
+            transition: all 0.3s ease;
+        }
+        
+        .mode-btn.active {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border-color: transparent;
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
+            color: white;
+        }
+        
+        .mode-btn:not(.active):hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* 呼吸燈動畫 */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .recording-indicator {
+            animation: pulse-ring 2s infinite;
+        }
+    </style>
+</head>
+<body class="text-white">
+    <!-- 背景星空 -->
+    <canvas id="starfield"></canvas>
+
+    <!-- UI 內容 -->
+    <div class="relative z-10 flex flex-col h-full w-full pointer-events-none">
+        
+        <!-- 頂部控制列 -->
+        <div class="p-4 flex justify-center pointer-events-auto">
+            <div class="glass-panel rounded-2xl p-4 md:p-6 w-full max-w-4xl flex flex-col items-center gap-4">
+                <h1 class="text-2xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+                    <i class="fa-solid fa-language mr-2"></i>星空即時翻譯字幕
+                </h1>
+                
+                <!-- 語言選擇按鈕群 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+                    <button class="mode-btn active rounded-xl px-4 py-3 border border-gray-600 flex items-center justify-center gap-2 font-medium" onclick="setMode('en-US', '繁體中文', this)">
+                        <span>🇺🇸 英語</span> <i class="fa-solid fa-arrow-right text-xs opacity-70"></i> <span>🇹🇼 中文</span>
+                    </button>
+                    <button class="mode-btn rounded-xl px-4 py-3 border border-gray-600 flex items-center justify-center gap-2 font-medium" onclick="setMode('ja-JP', '繁體中文', this)">
+                        <span>🇯🇵 日文</span> <i class="fa-solid fa-arrow-right text-xs opacity-70"></i> <span>🇹🇼 中文</span>
+                    </button>
+                    <button class="mode-btn rounded-xl px-4 py-3 border border-gray-600 flex items-center justify-center gap-2 font-medium" onclick="setMode('zh-TW', 'English', this)">
+                        <span>🇹🇼 中文</span> <i class="fa-solid fa-arrow-right text-xs opacity-70"></i> <span>🇺🇸 英語</span>
+                    </button>
+                    <button class="mode-btn rounded-xl px-4 py-3 border border-gray-600 flex items-center justify-center gap-2 font-medium" onclick="setMode('zh-TW', 'Japanese', this)">
+                        <span>🇹🇼 中文</span> <i class="fa-solid fa-arrow-right text-xs opacity-70"></i> <span>🇯🇵 日文</span>
+                    </button>
+                </div>
+
+                <!-- 錄音控制與狀態 -->
+                <div class="flex items-center gap-6 mt-2 w-full justify-between px-2">
+                    <div class="flex items-center gap-3">
+                        <button id="micBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-xl transition-all shadow-[0_0_15px_rgba(239,68,68,0.5)]" onclick="toggleRecording()">
+                            <i class="fa-solid fa-microphone"></i>
+                        </button>
+                        <div class="flex flex-col">
+                            <span id="statusText" class="font-bold text-red-400">已停止</span>
+                            <span id="langInfo" class="text-sm text-gray-400">辨識: 英語 | 翻譯: 繁體中文</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 系統訊息顯示區 (錯誤等) -->
+                    <div id="sysMsg" class="text-sm text-yellow-300 bg-yellow-900/40 px-3 py-1 rounded-lg hidden"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 字幕顯示區 -->
+        <div class="flex-grow flex flex-col justify-end items-center pb-12 px-6 pointer-events-auto">
+            <!-- 辨識出的原文 (較小) -->
+            <div id="originalText" class="text-lg md:text-xl lg:text-2xl text-gray-300 subtitle-text mb-2 text-center max-w-5xl opacity-80 min-h-[32px]">
+                等待語音輸入...
+            </div>
+            
+            <!-- 翻譯後的字幕 (較大) -->
+            <div id="translatedText" class="text-3xl md:text-5xl lg:text-6xl text-yellow-400 subtitle-text text-center max-w-5xl leading-tight min-h-[72px]">
+                Translation will appear here.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 星空背景動畫 (Canvas)
+        // ==========================================
+        const canvas = document.getElementById('starfield');
+        const ctx = canvas.getContext('2d');
+        let stars = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initStars();
+        }
+
+        function initStars() {
+            stars = [];
+            const numStars = Math.floor((canvas.width * canvas.height) / 1000); // 根據螢幕大小決定星星數量
+            for (let i = 0; i < numStars; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    radius: Math.random() * 1.5,
+                    vx: Math.floor(Math.random() * 50) - 25,
+                    vy: Math.floor(Math.random() * 50) - 25,
+                    opacity: Math.random()
+                });
+            }
+        }
+
+        function drawStars() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < stars.length; i++) {
+                const s = stars[i];
+                ctx.fillStyle = `rgba(255, 255, 255, ${s.opacity})`;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 讓星星稍微移動
+                s.y -= 0.2 + (s.radius * 0.1); 
+                s.x -= 0.1;
+
+                // 重置超出邊界的星星
+                if (s.y < 0) s.y = canvas.height;
+                if (s.x < 0) s.x = canvas.width;
+                if (s.opacity > 0.8) s.opacity -= 0.005;
+                else if (s.opacity < 0.2) s.opacity += 0.005;
+            }
+            requestAnimationFrame(drawStars);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        drawStars();
+
+        // ==========================================
+        // 狀態與設定變數
+        // ==========================================
+        let currentInputLang = 'en-US';
+        let currentTargetLang = '繁體中文';
+        let isRecording = false;
+        let recognition = null;
+        let translationQueue = [];
+        let isTranslating = false;
+
+        const micBtn = document.getElementById('micBtn');
+        const statusText = document.getElementById('statusText');
+        const langInfo = document.getElementById('langInfo');
+        const originalTextEl = document.getElementById('originalText');
+        const translatedTextEl = document.getElementById('translatedText');
+        const sysMsgEl = document.getElementById('sysMsg');
+
+        // ==========================================
+        // 切換語言模式
+        // ==========================================
+        function setMode(inputLang, targetLang, btnElement) {
+            currentInputLang = inputLang;
+            currentTargetLang = targetLang;
+            
+            // 更新 UI 資訊
+            const inputName = inputLang === 'en-US' ? '英語' : (inputLang === 'ja-JP' ? '日文' : '中文');
+            langInfo.innerText = `辨識: ${inputName} | 翻譯: ${targetLang}`;
+            
+            // 更新按鈕外觀
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+
+            // 如果正在錄音，重新啟動以套用新語言
+            if (isRecording) {
+                stopSpeechRecognition();
+                setTimeout(() => {
+                    startSpeechRecognition();
+                }, 500);
+            }
+        }
+
+        function showMessage(msg, isError = false) {
+            sysMsgEl.innerText = msg;
+            sysMsgEl.classList.remove('hidden');
+            if (isError) {
+                sysMsgEl.classList.add('text-red-300', 'bg-red-900/40');
+                sysMsgEl.classList.remove('text-yellow-300', 'bg-yellow-900/40');
+            } else {
+                sysMsgEl.classList.add('text-yellow-300', 'bg-yellow-900/40');
+                sysMsgEl.classList.remove('text-red-300', 'bg-red-900/40');
+            }
+            setTimeout(() => {
+                sysMsgEl.classList.add('hidden');
+            }, 5000);
+        }
+
+        // ==========================================
+        // Gemini API 翻譯功能
+        // ==========================================
+        async function translateText(text, targetLang) {
+            if (!text || text.trim() === '') return;
+            
+            try {
+                // 在 Immersive 環境中，API 金鑰將由系統自動提供
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+                
+                const systemPrompt = "You are a professional subtitle translator. You MUST output ONLY the direct translation of the given text in the requested target language. Do not add any explanations, notes, or quotes. Keep it natural and concise.";
+                const userQuery = `Target Language: ${targetLang}\nText to translate: ${text}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API 請求失敗狀態碼: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+
+                if (candidate && candidate.content?.parts?.[0]?.text) {
+                    let translated = candidate.content.parts[0].text.trim();
+                    // 移除多餘的引號 (有時模型會自己加上)
+                    translated = translated.replace(/^["']|["']$/g, '');
+                    return translated;
+                } else {
+                    throw new Error("無法解析 Gemini 的回覆");
+                }
+            } catch (error) {
+                console.error("翻譯錯誤:", error);
+                // 為了避免一直報錯影響體驗，不將 API Key 缺失等錯誤直接中斷程式
+                // 實務上可在此加入重試邏輯或顯示錯誤訊息
+                return "［翻譯發生錯誤，請稍後再試］";
+            }
+        }
+
+        // 佇列處理翻譯請求，避免同時發送過多 API
+        async function processTranslationQueue() {
+            if (isTranslating || translationQueue.length === 0) return;
+            
+            isTranslating = true;
+            const item = translationQueue.shift(); // 取出最早的請求
+            
+            // 顯示載入中動畫 (可選)
+            translatedTextEl.style.opacity = '0.5';
+            
+            const translatedResult = await translateText(item.text, item.targetLang);
+            
+            if(translatedResult) {
+                translatedTextEl.innerText = translatedResult;
+                translatedTextEl.style.opacity = '1';
+                
+                // 讓舊字幕淡出，新字幕淡入的效果可在此加強
+            }
+            
+            isTranslating = false;
+            // 繼續處理下一個
+            if (translationQueue.length > 0) {
+                processTranslationQueue();
+            }
+        }
+
+        // ==========================================
+        // Web Speech API (語音辨識)
+        // ==========================================
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showMessage("您的瀏覽器不支援 Web Speech API，請使用 Chrome 或 Edge。", true);
+                return false;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onstart = () => {
+                isRecording = true;
+                micBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                micBtn.classList.add('bg-green-500', 'hover:bg-green-600', 'recording-indicator');
+                micBtn.innerHTML = '<i class="fa-solid fa-stop"></i>';
+                statusText.innerText = "聆聽中...";
+                statusText.classList.replace('text-red-400', 'text-green-400');
+                originalTextEl.innerText = "正在聆聽您的聲音...";
+                translatedTextEl.innerText = "";
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                // 顯示過程中的文字
+                if (interimTranscript) {
+                    originalTextEl.innerText = interimTranscript;
+                }
+
+                // 如果有確定的一句話，更新並發送翻譯請求
+                if (finalTranscript) {
+                    originalTextEl.innerText = finalTranscript;
+                    
+                    // 將翻譯請求推入佇列
+                    translationQueue.push({
+                        text: finalTranscript,
+                        targetLang: currentTargetLang
+                    });
+                    processTranslationQueue();
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error("語音辨識錯誤:", event.error);
+                if (event.error === 'not-allowed') {
+                    showMessage("請允許麥克風權限才能使用此功能。", true);
+                    stopSpeechRecognition();
+                } else if (event.error === 'network') {
+                    showMessage("語音辨識服務連線失敗，請檢查網路狀態或確認瀏覽器設定。", true);
+                    stopSpeechRecognition();
+                } else {
+                    showMessage("發生語音辨識錯誤: " + event.error, true);
+                    stopSpeechRecognition();
+                }
+            };
+
+            recognition.onend = () => {
+                // 如果 isRecording 仍為 true 代表是意外中斷，嘗試重啟
+                if (isRecording) {
+                    recognition.start();
+                }
+            };
+
+            return true;
+        }
+
+        function startSpeechRecognition() {
+            if (!recognition) {
+                if (!initSpeechRecognition()) return;
+            }
+            recognition.lang = currentInputLang;
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error("Start recognition error:", e);
+            }
+        }
+
+        function stopSpeechRecognition() {
+            isRecording = false;
+            if (recognition) {
+                recognition.stop();
+            }
+            micBtn.classList.remove('bg-green-500', 'hover:bg-green-600', 'recording-indicator');
+            micBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+            statusText.innerText = "已停止";
+            statusText.classList.replace('text-green-400', 'text-red-400');
+        }
+
+        function toggleRecording() {
+            if (isRecording) {
+                stopSpeechRecognition();
+            } else {
+                startSpeechRecognition();
+            }
+        }
+
+    </script>
+</body>
+</html>
