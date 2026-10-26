@@ -106,6 +106,13 @@
                     </button>
                 </div>
 
+                <!-- API Key 設定區 (自行部署必填) -->
+                <div class="w-full flex items-center gap-2 mt-2 text-sm">
+                    <i class="fa-solid fa-key text-gray-400"></i>
+                    <input type="password" id="apiKeyInput" placeholder="請輸入 Gemini API Key (部署至 GitHub 時必填)" class="flex-grow bg-gray-900/80 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 placeholder-gray-500">
+                    <button onclick="saveApiKey()" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition border border-gray-600 shadow-lg">儲存</button>
+                </div>
+
                 <!-- 錄音控制與狀態 -->
                 <div class="flex items-center gap-6 mt-2 w-full justify-between px-2">
                     <div class="flex items-center gap-3">
@@ -209,6 +216,26 @@
         const originalTextEl = document.getElementById('originalText');
         const translatedTextEl = document.getElementById('translatedText');
         const sysMsgEl = document.getElementById('sysMsg');
+        const apiKeyInputEl = document.getElementById('apiKeyInput');
+
+        // 初始化載入儲存的 API Key
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('starry_api_key');
+            if (savedKey) {
+                apiKeyInputEl.value = savedKey;
+            }
+        });
+
+        function saveApiKey() {
+            const key = apiKeyInputEl.value.trim();
+            if (key) {
+                localStorage.setItem('starry_api_key', key);
+                showMessage("API Key 已儲存！", false);
+            } else {
+                localStorage.removeItem('starry_api_key');
+                showMessage("API Key 已清除。", false);
+            }
+        }
 
         // ==========================================
         // 切換語言模式
@@ -256,8 +283,9 @@
             if (!text || text.trim() === '') return;
             
             try {
-                // 在 Immersive 環境中，API 金鑰將由系統自動提供
-                const apiKey = ""; 
+                // 若自行部署，需使用使用者輸入的 API Key；在 Immersive 環境中若無 Key 會自動注入
+                const savedKey = localStorage.getItem('starry_api_key') || ""; 
+                const apiKey = savedKey; 
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
                 
                 const systemPrompt = "You are a professional subtitle translator. You MUST output ONLY the direct translation of the given text in the requested target language. Do not add any explanations, notes, or quotes. Keep it natural and concise.";
